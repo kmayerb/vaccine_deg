@@ -1,9 +1,14 @@
 library("DESeq2")
 
+_fast <- 'X:/fast/'
+# _fast <- '/fh/fast/'
+
+out_folder <- file.path(_fast, 'gilbert_p/fg_data/SCRI/TBVPX-203/RNA/2019Dec/hs_out')
+
 # input data matrix
-data <- as.matrix(read.csv(file = 'X:/fast/gilbert_p/fg_data/SCRI/TBVPX-203/RNA/2019Dec/salmon_merged_gene_counts.csv', row.names = "gene_id"))
+data <- as.matrix(read.csv(file = file.path(_fast, 'gilbert_p/fg_data/SCRI/TBVPX-203/RNA/2019Dec/salmon_merged_gene_counts.csv'), row.names = "gene_id"))
 colnames(data) = gsub("X", "P", colnames(data))
-trt_data <- read.csv('trt.csv', header=FALSE, stringsAsFactors=FALSE, fileEncoding="latin1")
+trt_data <- read.csv(file.path(_fast, 'gilbert_p/fg_data/SCRI/TBVPX-203/RNA/2019Dec/trt.csv'), header=FALSE, stringsAsFactors=FALSE, fileEncoding="latin1")
 colnames(trt_data) = trt_data[1,1:5]
 trt_data=trt_data[-1,]
 trt_data<-trt_data[trt_data$`Treatment Group` %in% c("2 µg ID93 + 5 µg GLA-SE (2 Vaccine Injections)", "2 µg ID93 + 5 µg GLA-SE (3 Vaccine Injections)"), ]
@@ -11,7 +16,7 @@ trt_data<-trt_data[trt_data$`Treatment Group` %in% c("2 µg ID93 + 5 µg GLA-SE 
 
 
 #input sample metadata
-samples <- read.csv('X:/fast/gilbert_p/fg_data/SCRI/TBVPX-203/RNA/2019Dec/salmon_metadata.csv')
+samples <- read.csv(file.path(_fast, 'gilbert_p/fg_data/SCRI/TBVPX-203/RNA/2019Dec/salmon_metadata.csv'))
 samples<-samples[,2:4]
 rownames(samples) <- samples$samplename
 
@@ -97,7 +102,7 @@ maplot <- function (res, thresh=0.05, labelsig=TRUE, textcx=1, ...) {
     with(subset(res, padj<thresh), points(baseMean, log2FoldChange, labs=Gene, cex=textcx, col=2))
   }
 }
-png("diffexpr-maplot_3_vs_0.png", 1500, 1000, pointsize=20)
+png(file.path(out_folder, "diffexpr-maplot_3_vs_0.png"), 1500, 1000, pointsize=20)
 maplot(resdata, main="MA Plot_3_vs_0")
 dev.off()
 
@@ -105,9 +110,9 @@ dev.off()
 
 
 ## Write results
-write.csv(resdata, file = "diffexpr-results_63_vs_3.csv", quote = FALSE, row.names = F)
+write.csv(resdata, file = file.path(out_folder, "diffexpr-results_63_vs_3.csv"), quote = FALSE, row.names = F)
 
-write.csv(resSig, file = "significant_genes-results_3_vs_0.csv", quote = FALSE, row.names = T)
+write.csv(resSig, file = file.path(out_folder, "significant_genes-results_3_vs_0.csv"), quote = FALSE, row.names = T)
 
 
 
