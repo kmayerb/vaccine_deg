@@ -1,0 +1,157 @@
+---
+title: "final_report"
+output: html_document
+date: "2022-12-13"
+---
+## Differential gene expression analysis using Deeq2
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+
+```
+
+### Loading the libraries 
+
+```{r a,,echo=TRUE}
+library("DESeq2")
+library(limma)
+library(edgeR) 
+library(RColorBrewer)
+library(clusterProfiler)
+library(enrichplot)
+library(ggplot2)
+library(org.Hs.eg.db)
+library(Glimma)
+```
+
+### Load the data
+
+```{r b,,echo=TRUE}
+data <- as.matrix(read.csv(file = 'X:/fast/gilbert_p/fg_data/SCRI/TBVPX-203/RNA/2019Dec/salmon_merged_gene_counts.csv', row.names = "gene_id"))
+colnames(data) = gsub("X", "P", colnames(data))
+```
+
+### Input treatment data
+```{r c,echo=TRUE}
+trt_data <- read.csv('trt.csv', header=FALSE, stringsAsFactors=FALSE, fileEncoding="latin1")
+colnames(trt_data) = trt_data[1,1:5]
+trt_data=trt_data[-1,]
+trt_data<-trt_data[trt_data$`Treatment Group` %in% c("2 µg ID93 + 5 µg GLA-SE (2 Vaccine Injections)", "2 µg ID93 + 5 µg GLA-SE (3 Vaccine Injections)"), ]
+head(trt_data)
+```
+
+### Input sample meta data
+```{r d,echo=TRUE}
+samples <- read.csv('X:/fast/gilbert_p/fg_data/SCRI/TBVPX-203/RNA/2019Dec/salmon_metadata.csv')
+samples<-samples[,2:4]
+rownames(samples) <- samples$samplename
+samples_0_3<-samples
+samples_0_3$Subject_ID<-substr(samples_0_3$samplename,1,(tail(unlist(gregexpr('_', samples_0_3$samplename)), n=1))-1)
+samples_0_3$Subject_ID =gsub("P203_", "", samples_0_3$Subject_ID)
+samples_0_3$Subject_ID=gsub("_", "", samples_0_3$Subject_ID)
+samples_0_3<-samples_0_3[samples_0_3$Subject_ID %in% trt_data$`Subject ID`, ]
+tt<-merge(trt_data,samples_0_3, by.x= "Subject ID", by.y="Subject_ID")
+head(tt)
+```
+
+
+### Subset data for Deseq2
+```{r e,echo=TRUE}
+tt_0_3<-tt[tt$day %in% c("0", "3"), ]
+tt_0_3$day <- factor(tt_0_3$day)
+rownames(tt_0_3)<-tt_0_3$samplename
+
+idx <- match(rownames(tt_0_3), colnames(data))
+data_0_3<- data[,idx]
+all(rownames(tt_0_3) == colnames(data_0_3))
+
+```
+
+
+### Create a DESEQ object
+```{r f,echo=TRUE}
+
+dds <- DESeqDataSetFromMatrix(countData = round(data_0_3),
+                              colData = tt_0_3,
+                              design= ~ ptid+day)
+
+```
+
+
+
+### Filter genes for Deseq2
+```{r g,echo=TRUE}
+
+keep <- rowSums(counts(dds) >= 10) >= 10
+sum(keep)
+dds <- dds[keep,]
+nrow(dds)
+
+```
+
+### Estimate dispersion in DEseq object
+```{r h,echo=TRUE}
+
+dds <- estimateSizeFactors(dds)
+sizeFactors(dds)
+dds = estimateDispersions( dds )
+
+```
+
+
+
+### Plot dispersion estimate
+```{r i,echo=TRUE}
+
+plotDispEsts(dds)
+cds <- DESeq(dds)
+res <- results(cds)
+table(res$padj<0.1)
+```
+
+
+
+
+
+### Find out significant genes
+
+
+```{r j,echo=TRUE}
+
+up = res[ which(res$padj < 0.1 & res$log2FoldChange > 0), ]
+down = res[ which(res$padj < 0.1 & res$log2FoldChange < 0), ]
+signicant_genes = rbind(up, down)
+rownames(up)
+rownames(down)
+```
+
+
+
+
+### Order the result from deseq based on pvalues
+```{r k,echo=TRUE}
+
+res <- res[order(res$padj), ]
+head(res)
+```
+
+
+### Merge with normalized count data
+```{r l,echo=TRUE}
+
+result_p_value <- merge(as.data.frame(res), 
+                 as.data.frame(counts(dds, normalized = TRUE)), 
+                 by = "row.names", 
+                 sort = FALSE)
+names(result_p_value)[1] <- "Gene"
+head(result_p_value)
+```
+
+### Write results
+
+```{r n,echo=TRUE}
+write.csv(result_p_value, file = "Deseq2_diffexpr-results_3_vs_0.csv", quote = FALSE, row.names = F)
+
+write.csv(signicant_genes, file = "Deseq2_significant_genes-results_3_vs_0.csv", quote = FALSE, row.names = T)
+```
+
