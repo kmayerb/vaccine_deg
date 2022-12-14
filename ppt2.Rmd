@@ -1,0 +1,175 @@
+---
+title: "final_report"
+output: html_document
+date: "2022-12-13"
+---
+## Differential gene expression analysis using EdgeR
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
+### Loading the libraries 
+
+```{r a,,echo=TRUE}
+library("DESeq2")
+library(limma)
+library(edgeR) 
+library(RColorBrewer)
+library(clusterProfiler)
+library(enrichplot)
+library(ggplot2)
+library(org.Hs.eg.db)
+```
+
+### Load the data
+
+```{r b,,echo=TRUE}
+data <- as.matrix(read.csv(file = 'X:/fast/gilbert_p/fg_data/SCRI/TBVPX-203/RNA/2019Dec/salmon_merged_gene_counts.csv', row.names = "gene_id"))
+colnames(data) = gsub("X", "P", colnames(data))
+```
+
+### Input treatment data
+```{r c,echo=TRUE}
+trt_data <- read.csv('trt.csv', header=FALSE, stringsAsFactors=FALSE, fileEncoding="latin1")
+colnames(trt_data) = trt_data[1,1:5]
+trt_data=trt_data[-1,]
+trt_data<-trt_data[trt_data$`Treatment Group` %in% c("2 µg ID93 + 5 µg GLA-SE (2 Vaccine Injections)", "2 µg ID93 + 5 µg GLA-SE (3 Vaccine Injections)"), ]
+head(trt_data)
+```
+
+### Input sample meta data
+```{r d,echo=TRUE}
+samples <- read.csv('X:/fast/gilbert_p/fg_data/SCRI/TBVPX-203/RNA/2019Dec/salmon_metadata.csv')
+samples<-samples[,2:4]
+rownames(samples) <- samples$samplename
+samples_0_3<-samples
+samples_0_3$Subject_ID<-substr(samples_0_3$samplename,1,(tail(unlist(gregexpr('_', samples_0_3$samplename)), n=1))-1)
+samples_0_3$Subject_ID =gsub("P203_", "", samples_0_3$Subject_ID)
+samples_0_3$Subject_ID=gsub("_", "", samples_0_3$Subject_ID)
+samples_0_3<-samples_0_3[samples_0_3$Subject_ID %in% trt_data$`Subject ID`, ]
+tt<-merge(trt_data,samples_0_3, by.x= "Subject ID", by.y="Subject_ID")
+head(tt)
+```
+
+
+### Subset data for EdgeR
+```{r e,echo=TRUE}
+idx2 <- match(rownames(samples_0_3), colnames(data))
+data_4<- data[,idx2]
+data_4<-as.matrix(data_4[ , colSums(is.na(data_4))==0])
+
+```
+
+
+
+
+### Filter genes for EdgeR
+```{r g,echo=TRUE}
+
+keep <- rowSums(cpm(data_4)>1) >= 2
+d0 <- data_4[keep,]
+dim(d0)
+
+```
+
+
+
+### Create a DGElist for EdgeR
+```{r f,echo=TRUE}
+d0 <- DGEList(d0)
+
+```
+
+
+
+
+
+### Normalization of data 
+```{r h,echo=TRUE}
+d0 <- calcNormFactors(d0,method = "TMM")
+
+```
+
+
+
+### Creating the design matrix for EdgeR
+```{r i,echo=TRUE}
+
+day<-as.character(tt$day)
+ptid<-as.character(tt$`Subject ID`)
+
+design <- model.matrix(~0+day+ptid)
+colnames(design) <- gsub("group", "", colnames(design))
+head(design)
+```
+
+
+
+
+
+### Cre
+
+
+```{r j,echo=TRUE}
+
+contr.matrix <- makeContrasts(
+  zerovsthree = day3-day0,
+  fiftysixvsthree = day56-day0,
+  levels = colnames(design))
+contr.matrix
+```
+
+
+
+
+### Voom normalization of the data
+```{r k,echo=TRUE}
+
+v <- voom(d0, design, plot=TRUE)
+v
+```
+
+
+### Fit the model
+```{r l,echo=TRUE}
+
+vfit <- lmFit(v, design)
+vfit <- contrasts.fit(vfit, contrasts=contr.matrix)
+efit <- eBayes(vfit)
+plotSA(efit)
+dt <- decideTests(efit)
+summary(dt)
+```
+
+
+
+
+### Plot the MD plot and write the result
+```{r m,echo=False}
+
+three.vs.zero <- topTreat(efit, coef=1, n=Inf)
+fifty_six.vs.zero <- topTreat(efit, coef=2, n=Inf)
+
+
+plotMD(efit, column=1, status=dt[,2], main=colnames(efit)[2], xlim=c(-8,13))
+## Write results
+write.csv(three.vs.zero, file = "edge_r_diffexpr-results_3_vs_0.csv", quote = FALSE, row.names = F)
+write.csv(fifty_six.vs.zero, file = "edge_r_diffexpr-results_56_vs_0.csv", quote = FALSE, row.names = F)
+
+```
+
+
+
+
+
+
+
+### Change the LFC value and finding the differentially expressed gene
+
+```{r n,echo=TRUE}
+tfit <- treat(vfit, lfc=1)
+summary(decideTests(tfit))
+
+```
+
