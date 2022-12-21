@@ -91,14 +91,14 @@ data_normalization <- function(d0)
 
 
 
-edgeR_preliminary <- function(input_directory, comparisons, pipeline_input)
+edgeR_preliminaries <- function(input_directory, comparisons, pipeline_input)
   {
 
   output_directory <- input_directory %>% 
     dplyr::first() %>% 
     paste0(pipeline_input$analysis_type, '/')
   
-  dir.create(edgeR_output_directory, recursive = TRUE, showWarnings = FALSE)
+  dir.create(output_directory, recursive = TRUE, showWarnings = FALSE)
   
   
   
@@ -129,23 +129,7 @@ edgeR_preliminary <- function(input_directory, comparisons, pipeline_input)
 
   
 
-  comparisons$file_name %>%
-    tibble(C = .) %>%
-    mutate(
-      B = map_chr(C, ~str_remove(string = .x, pattern = '_vs.*')),
-      A = map_chr(C, ~str_remove(string = .x, pattern = '.*vs_')),
-      all = pmap(list(C, A, B), ~paste0(..1, ' = ', ..2, ' - ', ..3))
-    ) %>% 
-    mutate(
-      make_contrasts = map(all, ~makeContrasts(contrasts = .x, levels = group)),
-      vfit = map(make_contrasts, ~contrasts.fit(fit = vfit, contrasts = .x)),
-      tfit = map(vfit, ~treat(fit = .x, lfc = pipeline_input$edger_lfc %>% as.numeric())),
-      dt = map(tfit, ~decideTests(object = .x, adjust.method = pipeline_input$edger_adjustment_method, p.value = pipeline_input$significance_cutoff)),
-      top_tables = map2(tfit, all, ~topTable(fit = .x, coef = .y, sort.by = 'p', n = 'Inf')),
-      write_out = map2(top_tables, C, ~write_tsv(x = .x, path = paste0(edgeR_output_directory, .y, '.tsv')))
-    )
-  
-  
+
   
   
 
