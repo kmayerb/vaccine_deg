@@ -10,51 +10,70 @@ library('edgeR')
 library('BiocParallel')
 
 data_file<-'X:/fast/gilbert_p/fg_data/SCRI/TBVPX-203/RNA/2019Dec/salmon_counts.csv'
-treatment_file<-'trt_pubid_2022-DEC-19.csv'
+treatment_file<-'trt_pubid_2022-DEC-19.csv' # Full Path Please
 sample_meta_data<-'X:/fast/gilbert_p/fg_data/SCRI/TBVPX-203/RNA/2019Dec/salmon_metadata.csv'
 day_subset<-c("0", "3")
 
 
-data_preprocessing <- function(data_file,sample_meta_data,treatment_file,
-                               day_subset)
-  {
-  data<-read_csv(
-          data_file,
-          col_names = TRUE
-              ) %>% 
-          column_to_rownames(var = "gene_id")
+data_preprocessing <- function(data_file,
+                               sample_meta_data,
+                               treatment_file,
+                               day_subset) {
+  data <- readr::read_csv(data_file,
+                          col_names = TRUE) %>% 
+                          dplyr::column_to_rownames(var = "gene_id")
+    
+  trt <- readr::read_csv(treatment_file)
+  # Original treatment file: column name is Treatment.Group. 
+  # When reading readr::read_csv() it reads `treatment group` 
+  # See comments about changing input
   
-  
-  trt<-read.csv(treatment_file)
-  trt<-trt[trt$Treatment.Group %in% 
+  trt <- trt[trt$Treatment.Group %in% 
                     c("2 µg ID93 + 5 µg GLA-SE (2 Vaccine Injections)", 
                       "2 µg ID93 + 5 µg GLA-SE (3 Vaccine Injections)"), ]
-  trt<-trt%>% 
+  # will be `subject_id` after fixing input file
+  trt <- trt %>% 
     rename("Subject_ID" = "Subject.ID")
   
-  sample<-read_csv(
-    sample_meta_data,
-    col_names = TRUE
-          )%>% 
-    select("samplename","ptid","day") %>% 
-    filter(day %in% day_subset) %>%
-    mutate(Subject_ID=as.numeric(gsub("_", "",gsub("P203_", "",
-                                                   substr(samplename,1,
-                             (tail(unlist(gregexpr('_',samplename))
-                                   , n=1))-1)))))
+  sample <- readr::read_csv(sample_meta_data,
+                            col_names = TRUE) %>% 
+    dplyr::select(c("samplename","ptid","day")) %>% 
+    dplyr::filter(day %in% day_subset) %>%
+    dplyr::mutate(Subject_ID = stringr::str_remove_all("_")) %>%
+    dplyr::mutate(Subject_ID = stringr::str_remove_all("P203"))%>%
+    dplyr::mutate(Subject_ID = stringr::str_remove(pattern = "_[0-9]{1,2}$")
+  
+    # e.g., P203_901_1002_3 transformed to 9011002  
+    #dplyr::mutate(Subject_ID=as.numeric(gsub("_", "",gsub("P203_", "",
+    #                                               substr(samplename,1,
+    #                         (tail(unlist(gregexpr('_',samplename))
+    #                               , n=1))-1)))))
 
-  meta_data<-inner_join(sample,trt, by = "Subject_ID") %>% 
-             column_to_rownames(var = "samplename")
+  # pulling information from the sample file, based on match to subject_id in trt file
+  
+  n_row_trt = dim(trt)[1]
+                  
+  meta_data <- dplyr::left_join(trt, 
+                                sample,
+                                by = "Subject_ID") %>%
+               dplyr::column_to_rownames(var = "samplename")
+  
+  n_row_meta_data = dim(meta_data)[1]
+  stopifnot(n_row_trt == n_row_meta_data)
+  # might check sum(is.na(meta_data['columname_that_was_in_sample_df']) == 0
+                                   
+  # Add a comment: <idx2> is ...
   idx2 <- match(rownames(meta_data), colnames(data))
   count_matrix<- data[,idx2]
   count_matrix<-as.matrix(count_matrix[,colSums(is.na(count_matrix))==0])
-  
-  
-  
+   
   
   result_data<-list(data,sample,trt,meta_data,count_matrix)
-  names(result_data) <- c("original_count_data","original_sample_meta_data",
-  "subset_treatment_data","subset_meta_data","final_count_matrix")
+  names(result_data) <- c("original_count_data",
+                          "original_sample_meta_data",
+                          "subset_treatment_data",
+                          "subset_meta_data",
+                          "final_count_matrix")
 
   
 return(result_data)
@@ -89,8 +108,13 @@ data_normalization <- function(d0)
   
 }
 
-
-
+#data_file<-'X:/fast/gilbert_p/fg_data/SCRI/TBVPX-203/RNA/2019Dec/salmon_counts.csv'
+#treatment_file<-'trt_pubid_2022-DEC-19.csv' # Full Path Please
+#sample_meta_data<-'X:/fast/gilbert_p/fg_data/SCRI/TBVPX-203/RNA/2019Dec/salmon_metadata.csv'
+#day_subset<-c("0", "3")
+                  
+#' @param input_directory - file
+#'
 edgeR_preliminaries <- function(input_directory, comparisons, pipeline_input)
   {
 
