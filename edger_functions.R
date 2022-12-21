@@ -1,4 +1,4 @@
-install.packages("tidyverse")
+
 library(tidyverse)
 library(RColorBrewer)  
 library(limma)
@@ -91,40 +91,104 @@ data_normalization <- function(d0)
 
 
 
+edgeR_preliminary <- function(input_directory, comparisons, pipeline_input)
+  {
+
+  output_directory <- input_directory %>% 
+    dplyr::first() %>% 
+    paste0(pipeline_input$analysis_type, '/')
+  
+  dir.create(edgeR_output_directory, recursive = TRUE, showWarnings = FALSE)
+  
+  
+  
+  
+  
+  
+  ty<-data_preprocessing(data_file,sample_meta_data,treatment_file,
+                         day_subset)
+  data1<-data_filtering(ty$final_count_matrix)
+  d_ss<-data_normalization(data1)
+  day_s=as.character(ty$subset_meta_data$day)
+  
+  meta_data<-ty$subset_meta_data
+  
+  design <- model.matrix(~day_s, d_ss$samples)
+  # colnames(design) <- gsub("group", "", colnames(design))
+  
+  v <- voom(d_ss, design, plot=TRUE)
+  
+  #contr.matrix <- makeContrasts(vax=day3, levels=colnames(design))
+  
+  corfit <- duplicateCorrelation(v, design, block=meta_data$pubid)
+  v <- voom(d_ss, design, block=meta_data$pubid, correlation = corfit$consensus)
+  fit <- lmFit(v, design, block=meta_data$pubid, correlation = corfit$consensus)
+  fit_test <- eBayes(fit)
+  dt <- decideTests(fit_test)
+  
+
+  
+
+  comparisons$file_name %>%
+    tibble(C = .) %>%
+    mutate(
+      B = map_chr(C, ~str_remove(string = .x, pattern = '_vs.*')),
+      A = map_chr(C, ~str_remove(string = .x, pattern = '.*vs_')),
+      all = pmap(list(C, A, B), ~paste0(..1, ' = ', ..2, ' - ', ..3))
+    ) %>% 
+    mutate(
+      make_contrasts = map(all, ~makeContrasts(contrasts = .x, levels = group)),
+      vfit = map(make_contrasts, ~contrasts.fit(fit = vfit, contrasts = .x)),
+      tfit = map(vfit, ~treat(fit = .x, lfc = pipeline_input$edger_lfc %>% as.numeric())),
+      dt = map(tfit, ~decideTests(object = .x, adjust.method = pipeline_input$edger_adjustment_method, p.value = pipeline_input$significance_cutoff)),
+      top_tables = map2(tfit, all, ~topTable(fit = .x, coef = .y, sort.by = 'p', n = 'Inf')),
+      write_out = map2(top_tables, C, ~write_tsv(x = .x, path = paste0(edgeR_output_directory, .y, '.tsv')))
+    )
+  
+  
+  
+  
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ty<-data_preprocessing(data_file,sample_meta_data,treatment_file,
                        day_subset)
 data1<-data_filtering(ty$final_count_matrix)
-data2<-data_normalization(data1)
+d_ss<-data_normalization(data1)
+day_s=as.character(ty$subset_meta_data$day)
 
-ty$subset_meta_data$day
+meta_data<-ty$subset_meta_data
 
-
-cl <- makeCluster(5)
-registerDoParallel(cl)
-
-# The variable to be tested should be a fixed effect
-form <- ~ day + (1|ptid) 
-day_s<-as.character(ty$subset_meta_data$day)
-design <- model.matrix(~day_s, data2$samples)
+design <- model.matrix(~day_s, d_ss$samples)
 # colnames(design) <- gsub("group", "", colnames(design))
 
-v <- voom(data2, design, plot=TRUE)
+v <- voom(d_ss, design, plot=TRUE)
 
-contr.matrix <- makeContrasts(vax="3", levels=colnames(design))
+#contr.matrix <- makeContrasts(vax=day3, levels=colnames(design))
 
-corfit <- duplicateCorrelation(v, design, block=ty$subset_meta_data$ptid.x)
+corfit <- duplicateCorrelation(v, design, block=meta_data$pubid)
+v <- voom(d_ss, design, block=meta_data$pubid, correlation = corfit$consensus)
+fit <- lmFit(v, design, block=meta_data$pubid, correlation = corfit$consensus)
+fit_test <- eBayes(fit)
+dt <- decideTests(fit_test)
 
-v <- voom(data2, design,  block=ty$subset_meta_data$ptid.x, correlation = corfit$consensus)
 
-fit <- lmFit(v, design, block=ty$subset_meta_data$ptid.x, correlation = corfit$consensus)
-vobj <- voom(data2, design, plot=FALSE)
 
-# Get the contrast matrix for the hypothesis test
-L = getContrast(vobj, form, data2$samples, "3")
 
-# Fit the dream model on each gene
-# Apply the contrast matrix L for the hypothesis test  
-# By default, uses the Satterthwaite approximation for the hypothesis test
-fitmm = dream( vobj, form, data2$samples, L)
+
+
 
 
